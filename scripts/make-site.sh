@@ -4,9 +4,10 @@
 # version tag):
 #   index.html, fonts/       the installer page (web/index.html)
 #   release/<path>           every file of the card
-#   manifest.json            version, files (size, SHA-256), the paths that
-#                            make up the system (backed up before an update)
-#                            and the game folders to create
+#   manifest.json            version, files (size, SHA-256), the boot files
+#                            the NOR bootloader loads (backed up from a stock
+#                            card), the paths that make up GB350 Linux (backed
+#                            up before an update) and the game folders
 #   usage: scripts/make-site.sh <version>
 set -eu
 cd "$(dirname "$0")/.."
@@ -43,7 +44,11 @@ for d, _, names in os.walk(rel):
 files.sort(key=lambda f: (f["path"] == "gb350/release.json", f["path"]))
 manifest = {
     "version": version,
-    "system": ["cubegm", "gb350/bin", "gb350/firmware", "gb350/kmod", "gb350/release.json"],
+    # The rest of a stock card's cubegm/ (its apps, cores and saves, ~500 MB)
+    # stays where it is: only these four are loaded at boot.
+    "boot": ["cubegm/vmlinux.uImage", "cubegm/dtb.bin", "cubegm/avp.uImage", "cubegm/xgame-logo.bmp"],
+    "system": ["cubegm/vmlinux.uImage", "cubegm/dtb.bin", "cubegm/avp.uImage", "cubegm/xgame-logo.bmp",
+               "gb350/bin", "gb350/firmware", "gb350/kmod", "gb350/release.json"],
     "folders": ["PS", "SFC", "GBA", "FC", "MD", "PCE", "MAME", "GB", "GBC", "GG", "SMS", "NGPC", "WSC", "ATARI"],
     "files": files,
 }

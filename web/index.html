@@ -219,7 +219,9 @@ button:focus-visible { outline: 3px solid var(--accent-hi); outline-offset: 3px;
 "use strict";
 // The installer: a folder the person picks (File System Access API) is the
 // card's root. manifest.json (scripts/make-site.sh) lists the release files.
-//   stock card:  cubegm/                 -> backup/stock/cubegm/ (kept for good)
+//   stock card:  manifest.boot (the 4 files the bootloader loads from
+//                cubegm/)               -> backup/stock/ (kept for good); the
+//                rest of the stock cubegm/ (apps, cores, saves) stays put
 //   GB350 Linux: manifest.system paths  -> backup/previous/ (replaced each time)
 // gb350/install-incomplete marks an install in progress (no new backup on a
 // retry); gb350/release.json is written last and names the version.
@@ -296,20 +298,63 @@ async function copyHandle(h, toDir, name) {
     for await (const [n, c] of h.entries()) await copyHandle(c, d, n);
   }
 }
-// Moves a file or folder; where the browser can't move it, copies it and
-// removes the original.
-async function movePath(from, to) {
+// Moves a file or folder file by file, calling onFile(path) for each:
+// renamed where the browser can (move()), else copied and the original
+// removed. Folders are never moved whole: a browser may support move() for
+// files only, or take a long time over a whole folder.
+let canMove = null;   // learnt from the first file: does move() work here?
+function timeout(p, ms) {
+  return Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error("timed out")), ms))]);
+}
+async function movePath(from, to, onFile = () => {}) {
   const h = await handleAt(from);
   if (!h) return false;
+  await moveHandle(h, from, to, onFile);
+  return true;
+}
+async function moveHandle(h, from, to, onFile) {
+  if (h.kind === "directory") {
+    await dirAt(to, true);
+    const kids = [];
+    for await (const [n, c] of h.entries()) kids.push([n, c]);
+    for (const [n, c] of kids) await moveHandle(c, `${from}/${n}`, `${to}/${n}`, onFile);
+    await removePath(from);
+    return;
+  }
+  onFile(from);
   await removePath(to);
   const ps = parts(to), name = ps.pop();
   const toDir = await dirAt(ps.join("/"), true);
-  if (h.move) {
-    try { await h.move(toDir, name); return true; } catch { /* copy instead */ }
+  if (h.move && canMove !== false) {
+    try {
+      await timeout(h.move(toDir, name), 15000);
+      if (canMove === null) console.log("installer: moving files by renaming");
+      canMove = true;
+      return;
+    } catch (e) {
+      console.warn("installer: move failed, copying instead:", from, e);
+      if (canMove === null) canMove = false;
+    }
   }
   await copyHandle(h, toDir, name);
   await removePath(from);
-  return true;
+}
+async function countFiles(path) {
+  const h = await handleAt(path);
+  if (!h) return 0;
+  if (h.kind === "file") return 1;
+  let n = 0;
+  for await (const [c] of h.entries()) n += await countFiles(`${path}/${c}`);
+  return n;
+}
+// Moves [from, to] pairs, as one progress step counting files.
+async function moveAll(step, pairs) {
+  let total = 0, done = 0;
+  for (const [from] of pairs) total += await countFiles(from);
+  console.log(`installer: ${step}: moving ${total} files`);
+  for (const [from, to] of pairs) {
+    await movePath(from, to, (f) => progress(step, done++, total, `${done} of ${total}`, f));
+  }
 }
 async function removeIfEmpty(path) {
   const h = await handleAt(path);
@@ -395,7 +440,7 @@ function showCard() {
     } else {
       intro = "This card has the GB350's original system. Here is what will change on it:";
       const dest = c.stock ? `${c.stock}-2` : "backup/stock";
-      items.push(change("Back up", `The original system moves to ${mono(dest + "/")}`, "Kept for good, so you can go back to the stock system later."));
+      items.push(change("Back up", `The stock system's boot files move to ${mono(dest + "/")}`, `Its kernel, firmware and boot logo, kept for good so you can go back to the stock system later. The rest of ${mono("cubegm/")} (the stock apps and saves) stays where it is.`));
     }
     items.push(change("Install", `GB350 Linux ${mono(v)} into ${mono("cubegm/")} and ${mono("gb350/")}`, `The kernel, second-core firmware and boot logo; the launcher and 11 emulators. About ${mb(total())}.`));
     items.push(change("Add", "Game folders, one per system", `<span class="mono">${manifest.folders.join(" ")}</span><br>${folders}`));
@@ -475,6 +520,7 @@ function setOverall(frac) {
   $("overall").firstElementChild.style.width = pct + "%";
 }
 function begin(id) {
+  console.log("installer: step", id);
   const el = stepEl(id);
   el.className = "active";
   el.firstElementChild.outerHTML = STEP_SVG.active;
@@ -554,16 +600,12 @@ async function install() {
     try {
       if (c.kind === "stock") {
         const dest = await freeName("backup/stock");
-        progress("backup", 0, 1, dest + "/", "cubegm/");
-        await movePath("cubegm", dest + "/cubegm");
+        await moveAll("backup", manifest.boot.map((p) => [p, `${dest}/${p}`]));
         backup = { kind: "stock", path: dest };
       } else {
+        progress("backup", 0, 1, "", "removing the old backup/previous/");
         await removePath("backup/previous");
-        const sys = manifest.system;
-        for (let i = 0; i < sys.length; i++) {
-          progress("backup", i, sys.length, "backup/previous/", sys[i]);
-          await movePath(sys[i], "backup/previous/" + sys[i]);
-        }
+        await moveAll("backup", manifest.system.map((p) => [p, "backup/previous/" + p]));
         backup = { kind: "previous", path: "backup/previous" };
       }
       await writeFile(MARKER, new TextEncoder().encode(JSON.stringify({ version: v, backup }) + "\n"));
@@ -629,25 +671,24 @@ async function restore(b, discard) {
   begin("aside");
   const tmp = await freeName("backup/swap");
   if (!discard && b.kind === "stock") await removePath("backup/previous");
-  for (let i = 0; i < sys.length; i++) {
-    progress("aside", i, sys.length, "", sys[i]);
-    if (discard) await removePath(sys[i]);
-    else await movePath(sys[i], (b.kind === "stock" ? "backup/previous/" : tmp + "/") + sys[i]);
+  if (discard) {
+    for (let i = 0; i < sys.length; i++) {
+      progress("aside", i, sys.length, "", sys[i]);
+      await removePath(sys[i]);
+    }
+  } else {
+    await moveAll("aside", sys.map((p) => [p, (b.kind === "stock" ? "backup/previous/" : tmp + "/") + p]));
   }
   await removePath(MARKER);
   finish("aside");
   begin("back");
   if (b.kind === "stock") {
-    progress("back", 0, 1, "", "cubegm/");
-    await movePath(b.path + "/cubegm", "cubegm");
+    await moveAll("back", [[b.path + "/cubegm", "cubegm"]]);
     await removePath(b.path);
   } else {
-    for (let i = 0; i < sys.length; i++) {
-      progress("back", i, sys.length, "", sys[i]);
-      await movePath("backup/previous/" + sys[i], sys[i]);
-    }
+    await moveAll("back", sys.map((p) => ["backup/previous/" + p, p]));
     await removePath("backup/previous");
-    if (!discard && (await exists(tmp))) await movePath(tmp, "backup/previous");
+    if (!discard && (await exists(tmp))) await moveAll("back", [[tmp, "backup/previous"]]);
   }
   await removeIfEmpty("gb350");
   await removeIfEmpty("backup");

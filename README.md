@@ -87,9 +87,10 @@ folder per system at the card root (`PS/`, `SFC/`, `GBA/`, ...).
 
 https://csnewman.github.io/gb350-linux/ installs the latest release on a
 GB350 card from Chrome or Edge on a computer (`web/index.html`). It moves
-the card's current system into `backup/stock/` (the original firmware, kept
-for good) or `backup/previous/` (the last GB350 Linux), writes and checks
-the new files and creates the game folders. Releases are published there by
+the stock system's boot files (the four the bootloader loads from `cubegm/`)
+into `backup/stock/`, kept for good, or the last GB350 Linux into
+`backup/previous/`; writes and checks the new files; and creates the game
+folders. The rest of a stock `cubegm/` (its apps and saves) is left alone. Releases are published there by
 CI when a `v*` tag is pushed (`scripts/make-site.sh`).
 
 ## Licence
