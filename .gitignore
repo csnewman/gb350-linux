@@ -9,6 +9,7 @@
 !/Cargo.lock
 !/rust-toolchain.toml
 !/.cargo/
+!/.github/
 !/kernel/
 !/avp/
 !/crates/

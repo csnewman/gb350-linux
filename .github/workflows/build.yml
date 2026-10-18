@@ -1,0 +1,74 @@
+# Builds the whole card: emulator cores, second-core firmware, kernel (with
+# the agent in its initramfs), launcher and emulators, assembled by
+# scripts/make-sdcard.sh and uploaded as the "sdcard" artifact.
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  card:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # zig (scripts/zig.sh downloads it into out/tools/).
+      - uses: actions/cache@v4
+        with:
+          path: out/tools
+          key: zig-${{ runner.os }}-${{ hashFiles('scripts/zig.sh') }}
+
+      # The cores change only with their pins, flags, patches or zig.
+      # pcsx_rearmed's checkout is kept for build-ps1gpu.sh.
+      - id: cores
+        uses: actions/cache@v4
+        with:
+          path: |
+            out/cores
+            out/build/pcsx_rearmed
+          key: cores-${{ runner.os }}-${{ hashFiles('scripts/build-cores.sh', 'scripts/zig.sh', 'cores/patches/**', 'cores/libc-mips/**') }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            avp/syscore -> target
+
+      - name: Emulator cores
+        if: steps.cores.outputs.cache-hit != 'true'
+        run: scripts/build-cores.sh
+
+      - name: PS1 rasteriser for the second core
+        run: scripts/build-ps1gpu.sh
+
+      - name: Second-core firmware
+        run: avp/syscore/build.sh
+
+      - name: Kernel, device tree, modules, agent
+        run: scripts/build-kernel.sh
+
+      - name: Launcher
+        run: cargo build -p gb350-launcher --release --target mipsel-unknown-linux-musl -Z build-std=std,panic_abort
+
+      - name: Emulators
+        run: scripts/build-emulators.sh
+
+      - name: Card
+        run: scripts/make-sdcard.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdcard
+          path: out/sdcard/
+          if-no-files-found: error
