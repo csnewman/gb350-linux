@@ -6,6 +6,10 @@ Linux 7.2 with drivers for the board, a Rust userspace (agent, launcher,
 emulator frontend) and Rust firmware for the second core. The stock
 bootloader in SPI NOR is used as it is.
 
+**[Install it on your GB350's SD card](https://csnewman.github.io/gb350-linux/)**
+from Chrome or Edge on a computer: the page backs up the card's current
+system and installs the latest release.
+
 <p>
 <img src="screenshots/library.png" width="400" alt="The game library: PlayStation games with box art, system tabs along the top">
 <img src="screenshots/settings.png" width="400" alt="Settings: display and sound, with brightness, game scaling, filter and picture controls">
