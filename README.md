@@ -36,6 +36,15 @@ scripts/make-sdcard.sh          # the card's files -> out/sdcard/
 Copy `out/sdcard/` to an exFAT card (MBR, one partition). Games go in one
 folder per system at the card root (`PS/`, `SFC/`, `GBA/`, ...).
 
+## Installing a release
+
+https://csnewman.github.io/gb350-linux/ installs the latest release on a
+GB350 card from Chrome or Edge on a computer (`web/index.html`). It moves
+the card's current system into `backup/stock/` (the original firmware, kept
+for good) or `backup/previous/` (the last GB350 Linux), writes and checks
+the new files and creates the game folders. Releases are published there by
+CI when a `v*` tag is pushed (`scripts/make-site.sh`).
+
 ## Licence
 
 MIT (`LICENSE`), except `kernel/` (GPL-2.0, as Linux) and `cores/` (the

@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GB350 Linux installer</title>
+<meta name="description" content="Install GB350 Linux on the GB350's SD card from Chrome or Edge.">
+<style>
+@font-face { font-family: "Chakra Petch"; font-weight: 700; src: url(fonts/ChakraPetch-Bold.ttf); font-display: swap; }
+@font-face { font-family: "Chakra Petch"; font-weight: 600; src: url(fonts/ChakraPetch-SemiBold.ttf); font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url(fonts/IBMPlexSans-Regular.ttf); font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600; src: url(fonts/IBMPlexSans-SemiBold.ttf); font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url(fonts/IBMPlexMono-Regular.ttf); font-display: swap; }
+:root {
+  --bg: #121316; --panel: #1C1E23; --edge: #2C3038; --rule: #262930; --sel: #26292F;
+  --text: #EDEDED; --list: #C9CDD3; --muted: #A3A8B0; --dim: #8A9099; --track: #3A3E46;
+  --accent: #FFC93C; --accent-hi: #FFE08A; --warn: #FF6B5A; --warn-bg: #3A1F1C;
+  --display: "Chakra Petch", system-ui, sans-serif;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 var(--sans); }
+a { color: var(--accent); } a:hover { color: var(--accent-hi); }
+[hidden] { display: none !important; }
+.mono { font-family: var(--mono); font-size: 0.92em; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 32px; border-bottom: 1px solid var(--rule); }
+.brand { display: flex; align-items: center; gap: 12px; font: 700 20px var(--display); letter-spacing: 0.04em; }
+.mark { width: 36px; height: 36px; border-radius: 9px; background: var(--accent); display: flex; align-items: center; justify-content: center; }
+header nav { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; font-size: 14px; color: var(--muted); }
+header nav .mono { color: var(--text); }
+main { max-width: 760px; margin: 0 auto; padding: 56px 24px 64px; }
+section { display: flex; flex-direction: column; gap: 28px; }
+.eyebrow { font: 600 13px var(--display); letter-spacing: 0.16em; color: var(--accent); }
+h1 { margin: 0; font: 700 44px/1.1 var(--display); }
+h1.small { font-size: 36px; line-height: 1.15; }
+h1 .mono { font-weight: 400; }
+.lede { margin: 0; font-size: 18px; color: var(--list); }
+p { margin: 0; }
+.sub { color: var(--list); }
+.note { font-size: 14px; color: var(--dim); }
+.head { display: flex; flex-direction: column; gap: 12px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.actions .note { color: var(--muted); }
+button { font: inherit; cursor: pointer; min-height: 52px; border-radius: 999px; }
+.primary { font: 700 18px var(--display); letter-spacing: 0.02em; color: var(--bg); background: var(--accent); border: 0; padding: 14px 32px; }
+.primary:hover { background: var(--accent-hi); }
+.secondary { font-weight: 600; font-size: 16px; color: var(--text); background: transparent; border: 1px solid var(--edge); padding: 12px 24px; }
+.secondary:hover { border-color: var(--muted); }
+button:focus-visible { outline: 3px solid var(--accent-hi); outline-offset: 3px; }
+.panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 18px 22px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.steps li { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.steps .n { font: 700 15px var(--display); color: var(--accent); }
+.steps b { font-weight: 600; }
+.steps span:last-child { font-size: 14px; color: var(--muted); }
+.alert { display: flex; gap: 16px; align-items: flex-start; }
+.alert b { display: block; font-weight: 600; margin-bottom: 4px; }
+.alert span { color: var(--muted); font-size: 15px; }
+.card { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.card .who { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
+.card .who b { font-weight: 600; }
+.card .who span { font-size: 14px; color: var(--muted); }
+.tag { font: 600 13px var(--display); letter-spacing: 0.08em; color: var(--bg); background: var(--list); border-radius: 999px; padding: 4px 12px; text-transform: uppercase; }
+.tag.linux { background: var(--accent); }
+.changes { list-style: none; margin: 0; padding: 0; border: 1px solid var(--edge); border-radius: 14px; overflow: hidden; }
+.changes li { display: flex; gap: 16px; padding: 18px 22px; background: var(--panel); border-bottom: 1px solid var(--rule); }
+.changes li:last-child { border-bottom: 0; }
+.changes .what { font: 700 16px var(--display); color: var(--accent); width: 92px; flex-shrink: 0; }
+.changes .what.keep { color: var(--dim); }
+.changes .why { display: flex; flex-direction: column; gap: 2px; }
+.changes .why span { font-size: 14px; color: var(--muted); }
+.bar { height: 10px; background: var(--track); border-radius: 999px; overflow: hidden; }
+.bar.thin { height: 6px; }
+.bar div { height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width 0.2s; }
+.overall { display: flex; flex-direction: column; gap: 8px; }
+.overall .row { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+.progress { list-style: none; margin: 0; padding: 0; border: 1px solid var(--edge); border-radius: 14px; overflow: hidden; }
+.progress li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 22px; background: var(--panel); border-bottom: 1px solid var(--rule); color: var(--muted); }
+.progress li:last-child { border-bottom: 0; }
+.progress li.active { background: var(--sel); color: var(--text); }
+.progress li.active .label, .progress li.done .label { color: var(--text); }
+.progress li.active .label { font-weight: 600; }
+.progress li.skipped { display: none; }
+.progress svg { flex-shrink: 0; margin-top: 2px; }
+.progress .body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.progress .row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.progress .row span:last-child { font-size: 14px; color: var(--muted); }
+.progress .file { font: 13px var(--mono); color: var(--dim); overflow-wrap: anywhere; }
+.progress li:not(.active) .bar, .progress li:not(.active) .file { display: none; }
+.big { width: 56px; height: 56px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: var(--accent); }
+.big.bad { background: var(--warn-bg); }
+.restore { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.restore div { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 2px; }
+.restore b { font-weight: 600; }
+.restore span { font-size: 14px; color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; }
+.links button { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent); text-decoration: underline; font-size: 14px; }
+.error { font: 13px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  header { padding: 16px; }
+  main { padding: 36px 16px 48px; }
+  h1 { font-size: 34px; } h1.small { font-size: 28px; }
+  .steps { grid-template-columns: minmax(0, 1fr); }
+  .changes li { flex-direction: column; gap: 4px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="#121316"/></svg></div>
+    GB350 Linux
+  </div>
+  <nav>
+    <span>Latest release <span class="mono v-new">…</span></span>
+    <a href="https://github.com/csnewman/gb350-linux">Source on GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <!-- 1. Start -->
+  <section data-screen="start">
+    <div class="head">
+      <div class="eyebrow">SD CARD INSTALLER</div>
+      <h1>Install GB350 Linux</h1>
+      <p class="lede">Put the GB350's SD card in this computer, choose it below, and this page installs the latest release. The card's current system goes into a backup folder on the card; games, saves and settings stay where they are.</p>
+    </div>
+    <div class="actions" id="start-actions">
+      <button class="primary" id="choose" type="button">Choose SD card</button>
+      <span class="note">Release <span class="mono v-new">…</span> · about <span class="size">…</span> to download</span>
+    </div>
+    <div class="panel alert" id="unsupported" hidden>
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B5A" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>
+      <div><b>This browser can't write to an SD card</b><span>Open this page in Chrome or Edge on a Windows, macOS, Linux or ChromeOS computer. Firefox, Safari and phones can't write to a folder you choose.</span></div>
+    </div>
+    <div class="panel alert" id="no-release" hidden>
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6B5A" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>
+      <div><b>The release couldn't be loaded</b><span>Check the connection and reload the page.</span></div>
+    </div>
+    <ol class="steps">
+      <li><span class="n">1</span><b>Card into the computer</b><span>Switch the GB350 off, take out its SD card and put it in this computer.</span></li>
+      <li><span class="n">2</span><b>Choose the card</b><span>Pick the card itself (its top folder) and allow this page to edit it.</span></li>
+      <li><span class="n">3</span><b>Install and eject</b><span>Check what will change, install, then eject the card and put it back.</span></li>
+    </ol>
+    <p class="note">The GB350's bootloader lives on the console, not the card, and is never changed. If anything goes wrong, run this page again or restore the backup.</p>
+  </section>
+
+  <!-- 2. Card found -->
+  <section data-screen="card" hidden>
+    <div class="panel card">
+      <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C9CDD3" stroke-width="1.8" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M10 3v4M12.5 3v4"/></svg>
+      <div class="who"><b id="card-name"></b><span>The card you chose</span></div>
+      <span class="tag" id="card-tag"></span>
+    </div>
+    <div class="head">
+      <h1 class="small" id="card-title"></h1>
+      <p class="sub" id="card-intro"></p>
+    </div>
+    <ul class="changes" id="card-changes"></ul>
+    <div class="actions">
+      <button class="primary" id="install" type="button"></button>
+      <button class="secondary" id="rechoose" type="button">Choose a different card</button>
+    </div>
+    <div class="links" id="card-restore"></div>
+  </section>
+
+  <!-- 3. Installing (also used for restoring) -->
+  <section data-screen="work" hidden>
+    <div class="head">
+      <h1 class="small" id="work-title"></h1>
+      <p class="sub">Keep this tab open and the card in the computer until it finishes.</p>
+    </div>
+    <div class="overall">
+      <div class="row"><span>Overall</span><span class="mono" id="overall-pct">0%</span></div>
+      <div class="bar" role="progressbar" aria-label="Overall progress" aria-valuemin="0" aria-valuemax="100" id="overall"><div></div></div>
+    </div>
+    <ol class="progress" id="steps"></ol>
+    <p class="note">Each file only appears on the card once it is completely written, and every file is read back and checked.</p>
+  </section>
+
+  <!-- 4. Done -->
+  <section data-screen="done" hidden>
+    <div class="head">
+      <div class="big"><svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#121316" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h1 class="small" id="done-title"></h1>
+      <p class="sub" id="done-sub"></p>
+    </div>
+    <ol class="steps">
+      <li><span class="n">1</span><b>Eject the card</b><span>Eject it in Finder or File Explorer before you take it out.</span></li>
+      <li><span class="n">2</span><b>Put it in the GB350</b><span>Then switch it on. The launcher comes up after the boot logo.</span></li>
+      <li><span class="n">3</span><b>Add games</b><span>Copy them into the system folders (PS, SFC, GBA…) now, or later over USB from Settings.</span></li>
+    </ol>
+    <div class="panel restore" id="done-restore">
+      <div><b id="done-restore-title"></b><span id="done-restore-sub"></span></div>
+      <button class="secondary" id="done-restore-btn" type="button">Restore previous system</button>
+    </div>
+  </section>
+
+  <!-- Problems -->
+  <section data-screen="problem" hidden>
+    <div class="head">
+      <div class="big bad"><svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#FF6B5A" stroke-width="2.4" stroke-linecap="round"><path d="M12 6v8M12 18v.5"/></svg></div>
+      <h1 class="small" id="problem-title"></h1>
+      <p class="sub" id="problem-sub"></p>
+    </div>
+    <div class="panel alert" id="problem-panel">
+      <div><b id="problem-panel-title"></b><span id="problem-panel-sub"></span></div>
+    </div>
+    <p class="error" id="problem-error"></p>
+    <div class="actions">
+      <button class="primary" id="problem-primary" type="button"></button>
+      <button class="secondary" id="problem-secondary" type="button"></button>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// The installer: a folder the person picks (File System Access API) is the
+// card's root. manifest.json (scripts/make-site.sh) lists the release files.
+//   stock card:  cubegm/                 -> backup/stock/cubegm/ (kept for good)
+//   GB350 Linux: manifest.system paths  -> backup/previous/ (replaced each time)
+// gb350/install-incomplete marks an install in progress (no new backup on a
+// retry); gb350/release.json is written last and names the version.
+
+const MARKER = "gb350/install-incomplete";
+const $ = (id) => document.getElementById(id);
+let manifest = null;
+let root = null;      // the card's directory handle
+let card = null;      // what inspect() found
+let files = null;     // downloaded and checked release files: path -> Uint8Array
+let backup = null;    // { kind: "stock" | "previous", path } made by the last install
+
+function show(name) {
+  for (const s of document.querySelectorAll("[data-screen]")) s.hidden = s.dataset.screen !== name;
+  window.scrollTo(0, 0);
+}
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+const mono = (s) => `<span class="mono">${esc(s)}</span>`;
+const mb = (n) => (n / 1e6 >= 10 ? Math.round(n / 1e6) : (n / 1e6).toFixed(1)) + " MB";
+
+// ---- the card's file system ----
+
+const parts = (path) => path.split("/").filter(Boolean);
+
+async function dirAt(path, create = false) {
+  let d = root;
+  for (const p of parts(path)) d = await d.getDirectoryHandle(p, { create });
+  return d;
+}
+async function handleAt(path) {
+  const ps = parts(path), name = ps.pop();
+  let parent;
+  try { parent = await dirAt(ps.join("/")); } catch { return null; }
+  for (const get of [(n) => parent.getDirectoryHandle(n), (n) => parent.getFileHandle(n)]) {
+    try { return await get(name); } catch { /* not this kind, or missing */ }
+  }
+  return null;
+}
+async function isDir(path) { return (await handleAt(path))?.kind === "directory"; }
+async function exists(path) { return (await handleAt(path)) !== null; }
+async function readBytes(path) {
+  const h = await handleAt(path);
+  return h?.kind === "file" ? new Uint8Array(await (await h.getFile()).arrayBuffer()) : null;
+}
+async function readJson(path) {
+  const b = await readBytes(path);
+  try { return b ? JSON.parse(new TextDecoder().decode(b)) : null; } catch { return null; }
+}
+async function writeFile(path, data) {
+  const ps = parts(path), name = ps.pop();
+  const d = await dirAt(ps.join("/"), true);
+  const f = await d.getFileHandle(name, { create: true });
+  // Chrome writes into a swap file and swaps it in on close: the file
+  // appears only once it is complete.
+  const w = await f.createWritable();
+  await w.write(data);
+  await w.close();
+}
+async function removePath(path) {
+  const ps = parts(path), name = ps.pop();
+  try { await (await dirAt(ps.join("/"))).removeEntry(name, { recursive: true }); }
+  catch (e) { if (e.name !== "NotFoundError") throw e; }
+}
+async function copyHandle(h, toDir, name) {
+  if (h.kind === "file") {
+    const f = await toDir.getFileHandle(name, { create: true });
+    const w = await f.createWritable();
+    await w.write(await h.getFile());
+    await w.close();
+  } else {
+    const d = await toDir.getDirectoryHandle(name, { create: true });
+    for await (const [n, c] of h.entries()) await copyHandle(c, d, n);
+  }
+}
+// Moves a file or folder; where the browser can't move it, copies it and
+// removes the original.
+async function movePath(from, to) {
+  const h = await handleAt(from);
+  if (!h) return false;
+  await removePath(to);
+  const ps = parts(to), name = ps.pop();
+  const toDir = await dirAt(ps.join("/"), true);
+  if (h.move) {
+    try { await h.move(toDir, name); return true; } catch { /* copy instead */ }
+  }
+  await copyHandle(h, toDir, name);
+  await removePath(from);
+  return true;
+}
+async function removeIfEmpty(path) {
+  const h = await handleAt(path);
+  if (h?.kind !== "directory") return;
+  for await (const _ of h.entries()) return;
+  await removePath(path);
+}
+async function freeName(path) {
+  if (!(await exists(path))) return path;
+  for (let i = 2; ; i++) if (!(await exists(`${path}-${i}`))) return `${path}-${i}`;
+}
+
+async function sha256(bytes) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// ---- what is on the card ----
+
+async function inspect() {
+  const c = { name: root.name, kind: null, version: null, incomplete: false, stock: null, previous: null };
+  if (await isDir("cubegm")) {
+    const rel = await readJson("gb350/release.json");
+    if (rel?.version) { c.kind = "linux"; c.version = rel.version; }
+    else {
+      // Installed before releases existed: the kernel's uImage name says gb350.
+      const head = (await readBytes("cubegm/vmlinux.uImage"))?.slice(32, 64);
+      const named = head && new TextDecoder().decode(head).includes("gb350");
+      c.kind = named || (await exists("gb350/bin/launcher")) ? "linux" : "stock";
+    }
+  } else {
+    let any = false;
+    for await (const [n] of root.entries()) if (!n.startsWith(".")) { any = true; break; }
+    c.kind = any ? "wrong" : "empty";
+  }
+  // An unfinished install: the marker names the backup it made.
+  c.incomplete = (await readJson(MARKER)) || ((await exists(MARKER)) ? {} : false);
+  if (await isDir("backup/stock/cubegm")) c.stock = "backup/stock";
+  if (await isDir("backup/previous")) {
+    c.previous = (await readJson("backup/previous/gb350/release.json"))?.version || "an earlier build";
+  }
+  return c;
+}
+
+// ---- screens ----
+
+function change(what, title, detail, keep = false) {
+  return `<li><span class="what${keep ? " keep" : ""}">${what}</span><div class="why"><span style="font-size:16px;color:var(--text)">${title}</span>${detail ? `<span>${detail}</span>` : ""}</div></li>`;
+}
+
+function showCard() {
+  const v = manifest.version, c = card;
+  $("card-name").textContent = c.name;
+  const tag = $("card-tag");
+  tag.className = "tag" + (c.kind === "linux" ? " linux" : "");
+  tag.textContent = c.incomplete ? "Install not finished" : c.kind === "linux" ? `GB350 Linux ${c.version || ""}`.trim()
+    : c.kind === "empty" ? "Empty card" : "Stock firmware";
+  const folders = `Folders that already exist are left as they are.`;
+  let title, intro, items = [], button;
+  if (c.incomplete) {
+    title = `Finish installing ${mono(v)}`;
+    intro = "An install on this card didn't finish. Its backup is already made, so this writes the new system again:";
+    items.push(change("Install", `GB350 Linux ${mono(v)}`, `All files written again. About ${mb(total())}.`));
+    items.push(change("Add", "Any missing game folders", folders));
+    items.push(change("Keep", "Your backups, games, saves and settings", "", true));
+    button = `Finish installing ${v}`;
+  } else if (c.kind === "linux") {
+    const same = c.version === v;
+    title = same ? `Reinstall ${mono(v)}` : `Update to ${mono(v)}`;
+    intro = same ? `This card already has ${mono(v)}. Reinstalling writes every file again, which fixes damaged files. Here is what will change:`
+      : `This card already runs GB350 Linux ${c.version ? mono(c.version) : "(an earlier build)"}. Here is what will change on it:`;
+    const was = c.previous ? `Replaces the backup of ${mono(c.previous)} already there.` : "";
+    const stock = c.stock ? ` The stock system in ${mono(c.stock + "/")} is kept.` : "";
+    items.push(change("Back up", `${c.version ? mono(c.version) : "The current system"} moves to ${mono("backup/previous/")}`, (was + stock).trim()));
+    items.push(change("Install", `GB350 Linux ${mono(v)}`, `The kernel, second-core firmware, boot logo, launcher and emulators. About ${mb(total())}.`));
+    items.push(change("Add", "Any missing game folders", folders));
+    items.push(change("Keep", "Your settings, favourites, saves and save states", "And your games, and everything else on the card.", true));
+    button = (same ? "Reinstall " : "Update to ") + v;
+  } else {
+    title = `Ready to install ${mono(v)}`;
+    if (c.kind === "empty") {
+      intro = "This card is empty, so there is nothing to back up. Here is what will go on it:";
+    } else {
+      intro = "This card has the GB350's original system. Here is what will change on it:";
+      const dest = c.stock ? `${c.stock}-2` : "backup/stock";
+      items.push(change("Back up", `The original system moves to ${mono(dest + "/")}`, "Kept for good, so you can go back to the stock system later."));
+    }
+    items.push(change("Install", `GB350 Linux ${mono(v)} into ${mono("cubegm/")} and ${mono("gb350/")}`, `The kernel, second-core firmware and boot logo; the launcher and 11 emulators. About ${mb(total())}.`));
+    items.push(change("Add", "Game folders, one per system", `<span class="mono">${manifest.folders.join(" ")}</span><br>${folders}`));
+    items.push(change("Keep", "Everything else on the card", "Your games and their pictures and lists stay where they are.", true));
+    button = `Install ${v}`;
+  }
+  $("card-title").innerHTML = title;
+  $("card-intro").innerHTML = intro;
+  $("card-changes").innerHTML = items.join("");
+  $("install").textContent = button;
+  const links = [];
+  if (c.incomplete?.backup) links.push(`<button type="button" data-restore="incomplete">Put the previous system back instead</button>`);
+  if (c.kind === "linux" && !c.incomplete) {
+    if (c.stock) links.push(`<button type="button" data-restore="stock">Go back to the stock system</button>`);
+    if (c.previous) links.push(`<button type="button" data-restore="previous">Go back to ${esc(c.previous)}</button>`);
+  }
+  $("card-restore").innerHTML = links.join("");
+  show("card");
+}
+
+function showProblem(kind, err) {
+  const p = (t, s, pt, ps, primary, secondary) => {
+    $("problem-title").textContent = t; $("problem-sub").innerHTML = s;
+    $("problem-panel-title").textContent = pt; $("problem-panel-sub").innerHTML = ps;
+    $("problem-primary").textContent = primary[0]; $("problem-primary").onclick = primary[1];
+    $("problem-secondary").hidden = !secondary;
+    if (secondary) { $("problem-secondary").textContent = secondary[0]; $("problem-secondary").onclick = secondary[1]; }
+  };
+  $("problem-error").textContent = err ? String(err.message || err) : "";
+  if (kind === "wrong") {
+    p("That isn't a GB350 card",
+      `The folder ${mono(root.name)} has no ${mono("cubegm")} folder, which every GB350 card has. Choose the card itself, not a folder on it.`,
+      "Where to find the card",
+      "On a Mac it's under Locations in the sidebar; on Windows, under This PC with its own drive letter. It's usually named GB350 or NO NAME.",
+      ["Choose SD card", choose], null);
+  } else if (kind === "install") {
+    p("The install stopped", `${esc(err.where || "Something")} failed: the card may be full, or it was taken out.`,
+      "Nothing on the console is harmed",
+      backup ? `The card has the backup in ${mono(backup.path + "/")} and some of the new files. Try again, or put the previous system back.`
+        : "The card has some of the new files. Try again with the card in the computer.",
+      ["Try again", () => run(install)], backup ? ["Restore previous system", () => run(() => restore(backup, true))] : null);
+  } else if (kind === "open") {
+    p("The card couldn't be opened", "The browser didn't allow this page to edit that folder.",
+      "Try again", "Choose the card itself and allow editing when the browser asks.",
+      ["Choose SD card", choose], null);
+  } else {
+    p("That didn't work", "Restoring the backup stopped part-way: the card may have been taken out.",
+      "Nothing on the console is harmed", "Put the card back in and choose it again to see what is on it.",
+      ["Choose SD card", choose], null);
+  }
+  show("problem");
+}
+
+// ---- progress ----
+
+const STEP_SVG = {
+  done: `<svg role="img" aria-label="Done" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFC93C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
+  active: `<svg role="img" aria-label="In progress" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="8" stroke="#3A3E46"/><path d="M12 4a8 8 0 0 1 8 8" stroke="#FFC93C"/></svg>`,
+  waiting: `<svg role="img" aria-label="Waiting" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A3E46" stroke-width="2.4"><circle cx="12" cy="12" r="8"/></svg>`,
+};
+let steps = [], weightDone = 0;
+
+function startWork(title, list) {
+  $("work-title").innerHTML = title;
+  steps = list.map(([id, label, weight]) => ({ id, label, weight }));
+  weightDone = 0;
+  $("steps").innerHTML = steps.map((s) => `<li id="step-${s.id}" class="waiting">${STEP_SVG.waiting}<div class="body"><div class="row"><span class="label">${s.label}</span><span class="detail"></span></div><div class="bar thin"><div></div></div><span class="file"></span></div></li>`).join("");
+  setOverall(0);
+  show("work");
+}
+function stepEl(id) { return $("step-" + id); }
+function setOverall(frac) {
+  const total = steps.reduce((a, s) => a + s.weight, 0);
+  const pct = Math.min(100, Math.round(((weightDone + frac) / total) * 100));
+  $("overall-pct").textContent = pct + "%";
+  $("overall").setAttribute("aria-valuenow", pct);
+  $("overall").firstElementChild.style.width = pct + "%";
+}
+function begin(id) {
+  const el = stepEl(id);
+  el.className = "active";
+  el.firstElementChild.outerHTML = STEP_SVG.active;
+}
+function progress(id, done, of, detail, file) {
+  const s = steps.find((x) => x.id === id), el = stepEl(id);
+  el.querySelector(".bar div").style.width = (of ? (done / of) * 100 : 0) + "%";
+  if (detail !== undefined) el.querySelector(".detail").textContent = detail;
+  if (file !== undefined) el.querySelector(".file").textContent = file;
+  setOverall(of ? (done / of) * s.weight : 0);
+}
+function finish(id, detail) {
+  const s = steps.find((x) => x.id === id), el = stepEl(id);
+  el.className = "done";
+  el.firstElementChild.outerHTML = STEP_SVG.done;
+  if (detail !== undefined) el.querySelector(".detail").textContent = detail;
+  weightDone += s.weight;
+  setOverall(0);
+}
+function skip(id) { stepEl(id).className = "skipped"; weightDone += steps.find((x) => x.id === id).weight; setOverall(0); }
+
+// Runs a job, sending failures to the problem screen.
+async function run(job) {
+  try { await job(); }
+  catch (e) {
+    console.error(e);
+    showProblem(job === install ? "install" : "restore", e);
+  }
+}
+function where(label, e) { e.where = label; return e; }
+
+// ---- install ----
+
+const total = () => manifest.files.reduce((a, f) => a + f.size, 0);
+
+async function install() {
+  const v = manifest.version, c = card;
+  startWork(`Installing ${mono(v)}`, [
+    ["download", "Download the release", 30], ["check", "Check the download", 4], ["backup", "Back up the current system", 8],
+    ["write", "Write the new files", 44], ["verify", "Check what was written", 12], ["folders", "Create the game folders", 2],
+  ]);
+  const list = manifest.files;
+
+  begin("download");
+  if (!files) {
+    const got = new Map();
+    let bytes = 0;
+    for (const f of list) {
+      progress("download", bytes, total(), `${mb(bytes)} of ${mb(total())}`, f.path);
+      const url = "release/" + parts(f.path).map(encodeURIComponent).join("/");
+      let r;
+      try { r = await fetch(url, { cache: "no-cache" }); } catch (e) { throw where(`Downloading ${f.path}`, e); }
+      if (!r.ok) throw where(`Downloading ${f.path}`, new Error(`HTTP ${r.status}`));
+      got.set(f.path, new Uint8Array(await r.arrayBuffer()));
+      bytes += f.size;
+    }
+    begin("check");
+    finish("download", mb(total()));
+    let n = 0;
+    for (const f of list) {
+      progress("check", n++, list.length, `${n} of ${list.length}`, f.path);
+      if ((await sha256(got.get(f.path))) !== f.sha256) throw where(`Checking ${f.path}`, new Error("the download is damaged; try again"));
+    }
+    files = got;
+  } else {
+    begin("check");
+    finish("download", mb(total()));
+  }
+  finish("check", `${list.length} files, checksums match`);
+
+  // Back up, unless an install already did (the marker) or there is nothing.
+  if (c.incomplete || c.kind === "empty") {
+    if (c.incomplete && !backup) backup = c.incomplete.backup || null;
+    skip("backup");
+  } else {
+    begin("backup");
+    try {
+      if (c.kind === "stock") {
+        const dest = await freeName("backup/stock");
+        progress("backup", 0, 1, dest + "/", "cubegm/");
+        await movePath("cubegm", dest + "/cubegm");
+        backup = { kind: "stock", path: dest };
+      } else {
+        await removePath("backup/previous");
+        const sys = manifest.system;
+        for (let i = 0; i < sys.length; i++) {
+          progress("backup", i, sys.length, "backup/previous/", sys[i]);
+          await movePath(sys[i], "backup/previous/" + sys[i]);
+        }
+        backup = { kind: "previous", path: "backup/previous" };
+      }
+      await writeFile(MARKER, new TextEncoder().encode(JSON.stringify({ version: v, backup }) + "\n"));
+      c.incomplete = { version: v, backup };
+    } catch (e) { throw where("Making the backup", e); }
+    finish("backup", backup.path + "/");
+  }
+
+  // Write: everything but release.json, which goes last.
+  begin("write");
+  const body = list.filter((f) => f.path !== "gb350/release.json");
+  for (let i = 0; i < body.length; i++) {
+    const f = body[i];
+    progress("write", i, body.length, `${i} of ${body.length}`, f.path);
+    try { await writeFile(f.path, files.get(f.path)); } catch (e) { throw where(`Writing ${f.path}`, e); }
+  }
+  finish("write", `${body.length} of ${body.length}`);
+
+  begin("verify");
+  for (let i = 0; i < body.length; i++) {
+    const f = body[i];
+    progress("verify", i, body.length, `${i} of ${body.length}`, f.path);
+    const b = await readBytes(f.path);
+    if (!b || (await sha256(b)) !== f.sha256) throw where(`Checking ${f.path}`, new Error("the file on the card is not what was written"));
+  }
+  finish("verify", "all files match");
+
+  begin("folders");
+  const fs = manifest.folders;
+  for (let i = 0; i < fs.length; i++) {
+    progress("folders", i, fs.length, "", fs[i] + "/");
+    try { await dirAt(fs[i], true); } catch (e) { throw where(`Creating ${fs[i]}/`, e); }
+  }
+  try {
+    await writeFile("gb350/release.json", files.get("gb350/release.json"));
+    await removePath(MARKER);
+  } catch (e) { throw where("Finishing the install", e); }
+  c.incomplete = false;
+  finish("folders", fs.length + " folders");
+
+  $("done-title").innerHTML = `GB350 Linux ${mono(v)} is on the card`;
+  $("done-sub").textContent = `All ${list.length} files were written and checked.`;
+  if (backup) {
+    $("done-restore").hidden = false;
+    $("done-restore-title").innerHTML = `The previous system is in ${mono(backup.path + "/")}`;
+    $("done-restore-sub").textContent = "Changed your mind? Put it back, and GB350 Linux is moved aside instead.";
+    $("done-restore-btn").onclick = () => run(() => restore(backup, false));
+  } else {
+    $("done-restore").hidden = true;
+  }
+  show("done");
+}
+
+// ---- restore ----
+
+// Puts a backup back. The system now on the card goes to backup/previous/
+// (when going back to stock) or swaps places with backup/previous/; after a
+// failed install (discard) it is removed instead.
+async function restore(b, discard) {
+  const sys = manifest.system;
+  const label = b.kind === "stock" ? "the stock system" : "the previous system";
+  startWork(`Restoring ${label}`, [["aside", discard ? "Remove the unfinished install" : "Move GB350 Linux aside", 50], ["back", "Put the backup back", 50]]);
+  begin("aside");
+  const tmp = await freeName("backup/swap");
+  if (!discard && b.kind === "stock") await removePath("backup/previous");
+  for (let i = 0; i < sys.length; i++) {
+    progress("aside", i, sys.length, "", sys[i]);
+    if (discard) await removePath(sys[i]);
+    else await movePath(sys[i], (b.kind === "stock" ? "backup/previous/" : tmp + "/") + sys[i]);
+  }
+  await removePath(MARKER);
+  finish("aside");
+  begin("back");
+  if (b.kind === "stock") {
+    progress("back", 0, 1, "", "cubegm/");
+    await movePath(b.path + "/cubegm", "cubegm");
+    await removePath(b.path);
+  } else {
+    for (let i = 0; i < sys.length; i++) {
+      progress("back", i, sys.length, "", sys[i]);
+      await movePath("backup/previous/" + sys[i], sys[i]);
+    }
+    await removePath("backup/previous");
+    if (!discard && (await exists(tmp))) await movePath(tmp, "backup/previous");
+  }
+  await removeIfEmpty("gb350");
+  await removeIfEmpty("backup");
+  finish("back");
+  backup = null;
+  card = await inspect();
+  $("done-title").textContent = b.kind === "stock" ? "The stock system is back" : `${card.version || "The previous system"} is back`;
+  $("done-sub").textContent = discard ? "The unfinished install was removed." : "GB350 Linux was moved to backup/previous/; run this page again to go back to it.";
+  $("done-restore").hidden = true;
+  show("done");
+}
+
+// ---- start ----
+
+async function choose() {
+  try {
+    if (new URLSearchParams(location.search).has("opfs")) {
+      // Testing: a private folder of this site stands in for the card.
+      root = await (await navigator.storage.getDirectory()).getDirectoryHandle("card", { create: true });
+    } else {
+      root = await window.showDirectoryPicker({ id: "gb350-card", mode: "readwrite" });
+    }
+  } catch (e) {
+    if (e.name !== "AbortError") showProblem("open", e);
+    return;
+  }
+  backup = null;
+  card = await inspect();
+  if (card.kind === "wrong") showProblem("wrong");
+  else showCard();
+}
+
+document.addEventListener("click", (e) => {
+  const r = e.target.closest("[data-restore]");
+  if (!r) return;
+  if (r.dataset.restore === "incomplete") { run(() => restore(card.incomplete.backup, true)); return; }
+  const b = r.dataset.restore === "stock" ? { kind: "stock", path: card.stock } : { kind: "previous", path: "backup/previous" };
+  run(() => restore(b, false));
+});
+$("choose").onclick = choose;
+$("rechoose").onclick = choose;
+$("install").onclick = () => run(install);
+
+(async () => {
+  const supported = "showDirectoryPicker" in window || new URLSearchParams(location.search).has("opfs");
+  try {
+    manifest = await (await fetch("manifest.json", { cache: "no-cache" })).json();
+    for (const el of document.querySelectorAll(".v-new")) el.textContent = manifest.version;
+    for (const el of document.querySelectorAll(".size")) el.textContent = mb(total());
+  } catch {
+    $("no-release").hidden = false;
+    $("start-actions").hidden = true;
+    return;
+  }
+  if (!supported) { $("unsupported").hidden = false; $("start-actions").hidden = true; }
+})();
+</script>
+</body>
+</html>

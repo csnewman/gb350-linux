@@ -1,11 +1,14 @@
 # Builds the whole card: emulator cores, second-core firmware, kernel (with
 # the agent in its initramfs), launcher and emulators, assembled by
-# scripts/make-sdcard.sh and uploaded as the "sdcard" artifact.
+# scripts/make-sdcard.sh and uploaded as the "sdcard" artifact. A version
+# tag (v*) also publishes the SD card installer (web/, scripts/make-site.sh)
+# with that release to GitHub Pages.
 name: build
 
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -72,3 +75,26 @@ jobs:
           name: sdcard
           path: out/sdcard/
           if-no-files-found: error
+
+      - name: Installer site
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: scripts/make-site.sh "$GITHUB_REF_NAME"
+
+      - uses: actions/upload-pages-artifact@v3
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          path: out/site/
+
+  pages:
+    needs: card
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

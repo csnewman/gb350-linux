@@ -15,6 +15,7 @@
 !/crates/
 !/cores/
 !/scripts/
+!/web/
 
 # Private parts of the public folders.
 /kernel/probes/
