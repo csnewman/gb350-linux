@@ -1,0 +1,9 @@
+[package]
+name = "gb350-kms"
+description = "Minimal KMS (DRM mode-setting) bindings over raw ioctls, for the GB350"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"

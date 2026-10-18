@@ -1,0 +1,6 @@
+config BATTERY_GB350
+	bool "GB350 battery"
+	depends on POWER_SUPPLY && IIO
+	help
+	  Battery level and charge status of the GB350 handheld, read from
+	  two ADC channels.

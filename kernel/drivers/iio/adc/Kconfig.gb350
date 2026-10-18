@@ -1,0 +1,6 @@
+config HC16XX_ADC
+	bool "HiChip HC16xx SAR ADC"
+	depends on IIO && OF && HAS_IOMEM
+	help
+	  The 8-bit SAR ADC of the HiChip HC16xx SoCs (battery and charge
+	  sensing on the GB350).

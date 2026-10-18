@@ -1,0 +1,7 @@
+# The device target (mipsel, MIPS32r2 soft-float, musl) is tier 3, so it needs
+# nightly (rust-toolchain.toml) + build-std. Use the scripts rather than invoking directly.
+# Rust ships no self-contained musl objects for this target; zig supplies the
+# C runtime and libc via scripts/mipsel-linker.sh.
+[target.mipsel-unknown-linux-musl]
+linker = "scripts/mipsel-linker.sh"
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-self-contained=no"]

@@ -1,0 +1,13 @@
+config KEYBOARD_GB350
+	bool "GB350 button shift register"
+	depends on INPUT_KEYBOARD && GPIOLIB
+	help
+	  The d-pad/ABXY/L1/R1/Select/Start buttons of the GB350 handheld,
+	  read through a shift register on two GPIOs.
+
+config KEYBOARD_GB350_SYSCORE
+	bool "GB350 buttons via the second core (syscore)"
+	depends on INPUT_KEYBOARD && OF
+	help
+	  All GB350 buttons and switches, scanned by the gb350-syscore firmware on the
+	  SoC's second core and delivered as messages (gb350-syscore).

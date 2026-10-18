@@ -1,0 +1,64 @@
+MIPS: kexec: sync the caches over the relocated kernel before jumping to it
+
+relocate_new_kernel copies the new image page by page through KSEG0
+(cached) and then jumps to it after a plain `sync`. Nothing writes the
+D-cache back or invalidates the I-cache (only Octeon does a synci), so on a
+CPU with write-back caches the new kernel can start from stale memory or
+stale I-cache lines. On the HC1600A (74Kc) kexec intermittently hung right
+after "Bye ...".
+
+On MIPS R2, synci each copied page (SYNCI_Step from rdhwr $1) and jump
+with jr.hb.
+
+--- a/arch/mips/kernel/relocate_kernel.S
++++ b/arch/mips/kernel/relocate_kernel.S
+@@ -64,9 +64,34 @@
+ 	PTR_ADDIU	s4, s4, SZREG
+ 	PTR_ADDIU	s2, s2, SZREG
+ 	LONG_ADDIU	s6, s6, -1
++#ifdef CONFIG_CPU_MIPSR2
++	beq		s6, zero, sync_page
++#else
+ 	beq		s6, zero, process_entry
++#endif
+ 	b		copy_word
+ 
++#ifdef CONFIG_CPU_MIPSR2
++	/*
++	 * The page was written through the cache: write the new kernel's code
++	 * back to memory and drop stale I-cache lines before anyone executes
++	 * it (synci per line, step from SYNCI_Step; 0 = no caches to sync).
++	 */
++sync_page:
++	.set	push
++	.set	mips32r2
++	rdhwr		t0, $1
++	beqz		t0, process_entry
++	PTR_ADDIU	t1, s4, -(1 << _PAGE_SHIFT)
++1:	synci		0(t1)
++	PTR_ADDU	t1, t1, t0
++	sltu		t2, t1, s4
++	bnez		t2, 1b
++	sync
++	.set	pop
++	b		process_entry
++#endif
++
+ done:
+ #ifdef CONFIG_SMP
+ 	/* kexec_flag reset is signal to other CPUs what kernel
+@@ -96,7 +121,14 @@
+ 	sync
+ #endif
+ 	/* jump to kexec_start_address */
++#ifdef CONFIG_CPU_MIPSR2
++	.set	push
++	.set	mips32r2
++	jr.hb		s1	/* clear the instruction hazard after synci */
++	.set	pop
++#else
+ 	j		s1
++#endif
+ 	END(relocate_new_kernel)
+ 
+ #ifdef CONFIG_SMP

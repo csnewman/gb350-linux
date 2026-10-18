@@ -1,0 +1,7 @@
+config SND_HC16XX
+	bool "HiChip HC16xx I2S output (GB350)"
+	depends on SND && OF && HAS_DMA
+	select SND_PCM
+	help
+	  ALSA driver for the I2S output DMA of HiChip HC16xx SoCs, as wired
+	  to the CS4344 DAC of the GB350 handheld.

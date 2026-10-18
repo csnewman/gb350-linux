@@ -1,0 +1,143 @@
+gb350: copy the drawing for the second core in unai (batches)
+
+Patch 0006 called the frontend after every command drawn (~1 us each,
+~1 ms a frame in Crash Bandicoot). Now unai copies each command into a
+buffer and hands it over in ~512-word batches (gb350_split->batch); the
+frontend hears about single commands only when they change what is
+drawn (fills, drawing-area changes, the first drawing command after
+either or a sync: gb350_split->track, while gb350_split_shared says so).
+Textured primitives call gb350_split->texture (with E1 / E2) only when
+their page or CLUT may overlap the bounding box of VRAM drawn since the
+last sync, which the frontend keeps in gb350_split_shared.
+diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
+--- a/plugins/gpu_unai/gpulib_if.cpp
++++ b/plugins/gpu_unai/gpulib_if.cpp
+@@ -120,16 +120,85 @@
+ // gb350: while the frontend mirrors the drawing to the GB350's second core
+ // (which draws the other stripes into the same VRAM), it sets these.
+ struct gb350_split_ops {
+-  void (*texture)(const uint32_t *cmd);            // before a textured primitive
+-  void (*command)(const uint32_t *cmd, int words); // after each command drawn
++  // Before a textured primitive whose page or CLUT may overlap VRAM drawn
++  // since the last sync (the bounding box below); e1 / e2 as they are now.
++  void (*texture)(const uint32_t *cmd, uint32_t e1, uint32_t e2);
++  // Fills, drawing-area changes, and the first drawing command while
++  // area_unmarked is set.
++  void (*track)(const uint32_t *cmd, int words);
++  // Commands drawn here, in order (copied here, sent in batches).
++  void (*batch)(const uint32_t *words, int n);
+   void (*flush)(void);    // renderer_flush_queues: gpulib accesses VRAM next
+   void (*written)(void);  // renderer_update_caches: gpulib wrote VRAM
+   void (*state)(void);    // renderer_split_state changed
+ };
++// Kept by the frontend: the drawing area still has to be marked as drawn;
++// the bounding box of VRAM drawn since the last sync (x1 < x0: nothing).
++struct gb350_split_shared {
++  uint32_t area_unmarked;
++  int32_t x0, y0, x1, y1;
++};
+ // Defined in frontend/libretro.c (the frontend reaches the split through C
+ // symbols there).
+ extern "C" const struct gb350_split_ops *gb350_split;
++extern "C" struct gb350_split_shared gb350_split_shared;
+ 
++// Commands drawn here, copied for the other core and handed over in
++// batches of about SPLIT_BATCH words (the other core starts on each).
++#define SPLIT_BUF 4096
++#define SPLIT_BATCH 512
++static uint32_t split_buf[SPLIT_BUF];
++static int split_n;
++
++extern "C" void renderer_split_drain(void)
++{
++  if (split_n && gb350_split)
++    gb350_split->batch(split_buf, split_n);
++  split_n = 0;
++}
++
++static inline void split_command(const uint32_t *w, u32 cmd, int n)
++{
++  if (cmd == 0x02 || cmd == 0xe3 || cmd == 0xe4 ||
++      (gb350_split_shared.area_unmarked && cmd >= 0x20 && cmd < 0x80))
++    gb350_split->track(w, n);
++  if (unlikely(split_n + n > SPLIT_BUF)) {
++    renderer_split_drain();
++    if (n > SPLIT_BUF) {
++      gb350_split->batch(w, n);  // too long for the other core: it stops
++      return;
++    }
++  }
++  memcpy(split_buf + split_n, w, n * 4);
++  split_n += n;
++  if (split_n >= SPLIT_BATCH)
++    renderer_split_drain();
++}
++
++// Whether VRAM [x, x + w) x [y, y + h) may overlap the drawn box.
++static inline bool split_drawn(const struct gb350_split_shared &d, int x, int y, int w, int h)
++{
++  return x + w > 1024 || y + h > 512 ||
++         !(x > d.x1 || x + w - 1 < d.x0 || y > d.y1 || y + h - 1 < d.y0);
++}
++
++static inline void split_texture(const uint32_t *w, u32 cmd, const uint32_t *ex_regs)
++{
++  const struct gb350_split_shared &d = gb350_split_shared;
++  if (d.x1 < d.x0)
++    return;  // nothing drawn since the last sync
++  u32 e1 = (ex_regs[1] & ~0x1ffu) | (gpu_unai.GPU_GP1 & 0x1ff);
++  u32 tp = (cmd & 0xe0) == 0x20 ? w[(cmd & 0x10) ? 5 : 4] >> 16 : e1;
++  int depth = (tp >> 7) & 3;
++  bool hit = split_drawn(d, (tp & 15) * 64, (tp & 16) * 16, depth == 0 ? 64 : depth == 1 ? 128 : 256, 256);
++  if (!hit && depth < 2) {
++    u32 clut = w[2] >> 16;
++    hit = split_drawn(d, (clut & 0x3f) * 16, (clut >> 6) & 0x1ff, depth == 0 ? 16 : 256, 1);
++  }
++  if (hit)
++    gb350_split->texture(w, e1, ex_regs[2]);
++}
++
+ // The options the drawing depends on besides the commands (for the other
+ // core: renderer_set_split_state). Returns the words written (3), or -1 if
+ // the drawing cannot be split (the old renderer).
+@@ -320,7 +389,7 @@
+     }
+     // Textures may come from VRAM the other core drew (gb350_split).
+     if (unlikely(gb350_split != NULL) && ((cmd & 0xe4) == 0x24 || (cmd & 0xe4) == 0x64))
+-      gb350_split->texture((const uint32_t *)list);
++      split_texture((const uint32_t *)list, cmd, ex_regs);
+ 
+     #define PRIM cmd
+     gpu_unai.PacketBuffer.U4[0] = list[0];
+@@ -734,7 +803,7 @@
+       } break;
+     }
+     if (unlikely(gb350_split != NULL))
+-      gb350_split->command((const uint32_t *)list, 1 + len);
++      split_command((const uint32_t *)list, cmd, 1 + len);
+   }
+ 
+ breakloop:
+diff --git a/frontend/libretro.c b/frontend/libretro.c
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -809,6 +809,11 @@
+ /* gb350: drawing shared with the second core: the unai renderer's hooks
+  * and controls (plugins/gpu_unai/gpulib_if.cpp), through C symbols here. */
+ const void *gb350_split;
++struct gb350_split_shared {
++   uint32_t area_unmarked;
++   int32_t x0, y0, x1, y1;
++} gb350_split_shared = { 1, 1, 1, 0, 0 };
++void renderer_split_drain(void);
+ void renderer_set_split(int shift, unsigned skip);
+ int renderer_split_state(uint32_t *w);
+ void renderer_split_resync(void);
+@@ -818,6 +823,7 @@
+ int gb350_split_state(uint32_t *w) { return renderer_split_state(w); }
+ void gb350_split_resync(void) { renderer_split_resync(); }
+ void *gb350_split_vram(void) { return renderer_split_vram(); }
++void gb350_split_drain(void) { renderer_split_drain(); }
+ 
+ static void *pl_mmap(unsigned int size)
+ {

@@ -1,0 +1,6 @@
+[package]
+name = "gb350-proto"
+description = "Wire protocol between gbctl (host) and gb350-agent (device)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true

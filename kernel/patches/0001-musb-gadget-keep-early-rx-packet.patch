@@ -1,0 +1,79 @@
+musb: gadget: don't drop an OUT packet that races with queueing a request
+
+musb_ep_restart() flushes the RX FIFO whenever an OUT request is queued.
+On the HC16xx with FunctionFS, the host often sends the next bulk transfer
+right after reading the gadget's response, before userspace has queued its next
+read. That packet is either already in the FIFO or still arriving, and the
+flush throws it away: back-to-back transfers lost their first packet.
+
+Do what the vendor 4.4 kernel did instead: never flush there. musb_g_rx()
+marks a packet that found no request as pending, and musb_ep_restart()
+hands it to rxstate(). A packet still arriving is delivered by its own
+interrupt. RXPKTRDY alone can't be trusted at queue time, since it can be
+visible while RXCOUNT still reads 0.
+
+--- a/drivers/usb/musb/musb_gadget.c
++++ b/drivers/usb/musb/musb_gadget.c
+@@ -807,8 +807,12 @@
+ 	musb_ep_select(mbase, epnum);
+ 
+ 	req = next_request(musb_ep);
+-	if (!req)
++	if (!req) {
++		/* Left in the FIFO for musb_ep_restart() to pick up. */
++		musb_ep->rx_pending = 1;
+ 		return;
++	}
++	musb_ep->rx_pending = 0;
+ 
+ 	trace_musb_req_rx(req);
+ 	request = &req->request;
+@@ -1063,6 +1067,7 @@
+ 	musb_ep->desc = desc;
+ 	musb_ep->busy = 0;
+ 	musb_ep->wedged = 0;
++	musb_ep->rx_pending = 0;
+ 	status = 0;
+ 
+ 	pr_debug("%s periph: enabled %s for %s %s, %smaxpacket %d\n",
+@@ -1162,18 +1167,20 @@
+  */
+ void musb_ep_restart(struct musb *musb, struct musb_request *req)
+ {
+-	u16 csr;
+-	void __iomem *epio = req->ep->hw_ep->regs;
+-
+ 	trace_musb_req_start(req);
+ 	musb_ep_select(musb->mregs, req->epnum);
+ 	if (req->tx) {
+ 		txstate(musb, req);
+-	} else {
+-		csr = musb_readw(epio, MUSB_RXCSR);
+-		csr |= MUSB_RXCSR_FLUSHFIFO | MUSB_RXCSR_P_WZC_BITS;
+-		musb_writew(epio, MUSB_RXCSR, csr);
+-		musb_writew(epio, MUSB_RXCSR, csr);
++	} else if (req->ep->rx_pending) {
++		/*
++		 * A packet whose interrupt found no request queued is still in
++		 * the FIFO: hand it to this request. Otherwise do nothing; the
++		 * interrupt of the next packet starts the transfer. Never flush
++		 * here: a packet may be arriving right now (RXPKTRDY/RXCOUNT not
++		 * yet valid), and flushing silently drops it.
++		 */
++		req->ep->rx_pending = 0;
++		rxstate(musb, req);
+ 	}
+ }
+ 
+--- a/drivers/usb/musb/musb_gadget.h
++++ b/drivers/usb/musb/musb_gadget.h
+@@ -93,6 +93,9 @@
+ 	/* true if lock must be dropped but req_list may not be advanced */
+ 	u8				busy;
+ 
++	/* OUT: a packet was left in the FIFO because no request was queued */
++	u8				rx_pending;
++
+ 	u8				hb_mult;
+ };
+ 

@@ -1,0 +1,33 @@
+# Whitelist: only the public build is tracked. Everything else in this
+# folder (notes, research, stock firmware, test tools, build output) stays
+# private - add new public paths here explicitly.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/Cargo.toml
+!/Cargo.lock
+!/rust-toolchain.toml
+!/.cargo/
+!/kernel/
+!/avp/
+!/crates/
+!/cores/
+!/scripts/
+
+# Private parts of the public folders.
+/kernel/probes/
+/avp/*
+!/avp/syscore/
+/crates/corelink/examples/
+/crates/pcm/src/bin/
+/crates/ui/examples/*
+!/crates/ui/examples/bootlogo.rs
+/cores/ps1gpu/replay.cpp
+/scripts/deploy-*.sh
+/scripts/write-sdcard.sh
+
+# Build output and OS litter.
+target/
+.DS_Store
+._*

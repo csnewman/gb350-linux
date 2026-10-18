@@ -1,0 +1,9 @@
+[package]
+name = "gb350-pcm"
+description = "Minimal ALSA playback (PCM + mixer controls) over raw ioctls, for the GB350"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"

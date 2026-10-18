@@ -1,0 +1,39 @@
+gb350: save states with the PS1 RAM mapped at address 0
+
+With LIGHTREC_CUSTOM_MAP (the GB350 build: vm.mmap_min_addr = 0, the frontend linked
+high) the PS1 RAM lives at host address 0, so psxRegs.ptrs.psxM is NULL.
+save_read / save_write rejected a NULL buffer: the 2 MB of RAM were skipped
+on save and on load, without advancing the stream position. States then
+held the registers of the save with whatever RAM was current at load time:
+SIGILL / segfaults / "rw_generic: No block found in LUT" after loading,
+across runs and within one. Only a NULL file is an error now.
+
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -1305,10 +1305,16 @@
+    return fp;
+ }
+ 
++/*
++ * gb350: no buf == NULL check: with LIGHTREC_CUSTOM_MAP the PS1 RAM is
++ * mapped at address 0, so psxM *is* NULL - its 2 MB were skipped on save
++ * and load (without advancing pos): states kept the RAM of the moment of
++ * loading with the saved registers, and crashed.
++ */
+ static int save_read(void *file, void *buf, u32 len)
+ {
+    struct save_fp *fp = file;
+-   if (fp == NULL || buf == NULL)
++   if (fp == NULL)
+       return -1;
+ 
+    memcpy(buf, fp->buf + fp->pos, len);
+@@ -1319,7 +1325,7 @@
+ static int save_write(void *file, const void *buf, u32 len)
+ {
+    struct save_fp *fp = file;
+-   if (fp == NULL || buf == NULL)
++   if (fp == NULL)
+       return -1;
+ 
+    memcpy(fp->buf + fp->pos, buf, len);

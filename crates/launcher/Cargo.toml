@@ -1,0 +1,17 @@
+[package]
+name = "gb350-launcher"
+description = "Game launcher for the GB350: library, search, settings; starts games in retro"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "launcher"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+png = "0.17"
+gb350-kms = { path = "../kms" }
+gb350-pcm = { path = "../pcm" }
+gb350-ui = { path = "../ui" }

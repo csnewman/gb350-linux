@@ -1,0 +1,11 @@
+[package]
+name = "gb350-ui"
+description = "Software drawing and TrueType text for the GB350's own screens"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+ab_glyph = "0.2"
+libc = "0.2"
+gb350-kms = { path = "../kms" }

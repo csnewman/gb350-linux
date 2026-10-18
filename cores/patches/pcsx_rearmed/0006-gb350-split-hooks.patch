@@ -1,0 +1,182 @@
+gb350: drawing shared with the GB350's second core (frontend hooks)
+
+unai: gb350_split (set by the frontend while it mirrors the drawing to the
+second core, which draws the other row stripes, patch 0005, into the same
+VRAM): every command drawn, textured primitives before drawing (their
+texture may be VRAM the other core drew), renderer_flush_queues (gpulib
+reads or writes VRAM next, or scans out) and renderer_update_caches
+(gpulib wrote VRAM); renderer_split_state / renderer_set_split_state carry
+the drawing options the commands do not.
+
+gpulib: a VRAM read transfer reads its first word at the start: sync the
+renderer there.
+
+libretro: gb350_vram_map / gb350_vram_unmap let the frontend provide the
+VRAM (corelink memory both cores can address); gb350_split and the
+gb350_split_* wrappers give the frontend the renderer's split through C
+symbols (a Rust reference to the C++ ones made the LTO link come out
+hard-float).
+
+diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
+--- a/plugins/gpu_unai/gpulib_if.cpp
++++ b/plugins/gpu_unai/gpulib_if.cpp
+@@ -115,8 +115,64 @@
+ {
+   gpu_unai.inn.split_shift = shift;
+   gpu_unai.inn.split_skip = skip;
++}
++
++// gb350: while the frontend mirrors the drawing to the GB350's second core
++// (which draws the other stripes into the same VRAM), it sets these.
++struct gb350_split_ops {
++  void (*texture)(const uint32_t *cmd);            // before a textured primitive
++  void (*command)(const uint32_t *cmd, int words); // after each command drawn
++  void (*flush)(void);    // renderer_flush_queues: gpulib accesses VRAM next
++  void (*written)(void);  // renderer_update_caches: gpulib wrote VRAM
++  void (*state)(void);    // renderer_split_state changed
++};
++// Defined in frontend/libretro.c (the frontend reaches the split through C
++// symbols there).
++extern "C" const struct gb350_split_ops *gb350_split;
++
++// The options the drawing depends on besides the commands (for the other
++// core: renderer_set_split_state). Returns the words written (3), or -1 if
++// the drawing cannot be split (the old renderer).
++extern "C" int renderer_split_state(uint32_t *w)
++{
++  const gpu_unai_config_t &c = gpu_unai.config;
++  if (IS_OLD_RENDERER())
++    return -1;
++  w[0] = c.pixel_skip | c.ilace_force << 1 | c.lighting << 4 | c.fast_lighting << 5 |
++         c.blending << 6 | c.dithering << 7 | c.force_dithering << 8;
++  w[1] = gpu_unai.inn.ilace_mask;
++  w[2] = gpu_unai.prog_ilace_flag;
++  return 3;
++}
++
++extern "C" int renderer_set_split_state(const uint32_t *w, int n)
++{
++  gpu_unai_config_t &c = gpu_unai.config;
++  if (n < 3)
++    return -1;
++  c.pixel_skip = w[0] & 1;
++  c.ilace_force = (w[0] >> 1) & 7;
++  c.lighting = (w[0] >> 4) & 1;
++  c.fast_lighting = (w[0] >> 5) & 1;
++  c.blending = (w[0] >> 6) & 1;
++  c.dithering = (w[0] >> 7) & 1;
++  c.force_dithering = (w[0] >> 8) & 1;
++  gpu_unai.inn.ilace_mask = w[1];
++  gpu_unai.prog_ilace_flag = w[2];
++  return 0;
+ }
+ 
++// The E1-E6 registers through the command hooks (starting a mirror).
++extern "C" void renderer_split_resync(void)
++{
++  renderer_sync_ecmds(gpu.ex_regs);
++}
++
++extern "C" void *renderer_split_vram(void)
++{
++  return gpu.vram;
++}
++
+ void renderer_notify_screen_change(const struct psx_gpu_screen *screen)
+ {
+   gpu_unai.inn.ilace_mask = gpu_unai.config.ilace_force;
+@@ -126,6 +182,9 @@
+     gpu_unai.inn.ilace_mask |= !!(gpu.status & PSX_GPU_STATUS_INTERLACE);
+   }
+ 
++  if (gb350_split)
++    gb350_split->state();
++
+   /*
+   printf("res change hres: %d   vres: %d   depth: %d   ilace_mask: %d\n",
+       gpu.screen.hres, gpu.screen.vres, (gpu.status & PSX_GPU_STATUS_RGB24) ? 24 : 15,
+@@ -259,6 +318,9 @@
+       cmd = -1;
+       break;
+     }
++    // Textures may come from VRAM the other core drew (gb350_split).
++    if (unlikely(gb350_split != NULL) && ((cmd & 0xe4) == 0x24 || (cmd & 0xe4) == 0x64))
++      gb350_split->texture((const uint32_t *)list);
+ 
+     #define PRIM cmd
+     gpu_unai.PacketBuffer.U4[0] = list[0];
+@@ -671,6 +733,8 @@
+         gpuGP0Cmd_0xEx(gpu_unai, cmd_word);
+       } break;
+     }
++    if (unlikely(gb350_split != NULL))
++      gb350_split->command((const uint32_t *)list, 1 + len);
+   }
+ 
+ breakloop:
+@@ -703,10 +767,14 @@
+ 
+ void renderer_update_caches(int x, int y, int w, int h, int state_changed)
+ {
++  if (gb350_split)
++    gb350_split->written();
+ }
+ 
+ void renderer_flush_queues(void)
+ {
++  if (gb350_split)
++    gb350_split->flush();
+ }
+ 
+ void renderer_set_interlace(int enable, int is_odd)
+diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
+--- a/plugins/gpulib/gpu.c
++++ b/plugins/gpulib/gpu.c
+@@ -659,6 +659,7 @@
+ 
+   if (is_read) {
+     const uint16_t *mem = VRAM_MEM_XY(gpu->vram, gpu->dma.x, gpu->dma.y);
++    sync_renderer(gpu); // gb350: the first word is read here
+     gpu->status |= PSX_GPU_STATUS_IMG;
+     // XXX: wrong for width 1
+     gpu->gp0 = LE16TOH(mem[0]) | ((uint32_t)LE16TOH(mem[1]) << 16);
+diff --git a/frontend/libretro.c b/frontend/libretro.c
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -801,13 +801,36 @@
+ #endif
+ }
+ 
++/* gb350: the frontend may provide the VRAM (memory shared with the second
++ * core); unmap returns 0 for memory that is not its own. */
++void *(*gb350_vram_map)(unsigned int size);
++int (*gb350_vram_unmap)(void *ptr, unsigned int size);
++
++/* gb350: drawing shared with the second core: the unai renderer's hooks
++ * and controls (plugins/gpu_unai/gpulib_if.cpp), through C symbols here. */
++const void *gb350_split;
++void renderer_set_split(int shift, unsigned skip);
++int renderer_split_state(uint32_t *w);
++void renderer_split_resync(void);
++void *renderer_split_vram(void);
++
++void gb350_split_set(int shift, unsigned skip) { renderer_set_split(shift, skip); }
++int gb350_split_state(uint32_t *w) { return renderer_split_state(w); }
++void gb350_split_resync(void) { renderer_split_resync(); }
++void *gb350_split_vram(void) { return renderer_split_vram(); }
++
+ static void *pl_mmap(unsigned int size)
+ {
++   void *p = gb350_vram_map ? gb350_vram_map(size) : NULL;
++   if (p)
++      return p;
+    return psxMap(0, size, 0, MAP_TAG_VRAM);
+ }
+ 
+ static void pl_munmap(void *ptr, unsigned int size)
+ {
++   if (gb350_vram_unmap && gb350_vram_unmap(ptr, size))
++      return;
+    psxUnmap(ptr, size, MAP_TAG_VRAM);
+ }
+ 

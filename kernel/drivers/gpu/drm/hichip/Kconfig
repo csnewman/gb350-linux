@@ -1,0 +1,12 @@
+config DRM_HC16XX
+	bool "HiChip HC16xx display (GMA layers)"
+	depends on DRM && OF
+	select APERTURE_HELPERS
+	select DRM_CLIENT_SELECTION
+	select DRM_GEM_DMA_HELPER
+	select DRM_KMS_HELPER
+	select VIDEOMODE_HELPERS
+	help
+	  KMS driver for the graphics layers of the HiChip HC16xx display
+	  engine (GB350 handheld): two scaled planes on the panel the
+	  bootloader sets up.

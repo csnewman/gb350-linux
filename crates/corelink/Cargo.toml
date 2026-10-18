@@ -1,0 +1,9 @@
+[package]
+name = "gb350-corelink"
+description = "Memory and work rings shared with the GB350's second core (/dev/corelink)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"

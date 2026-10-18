@@ -1,0 +1,5 @@
+config PWM_HC16XX
+	bool "HiChip HC16xx PWM"
+	depends on OF && HAS_IOMEM
+	help
+	  The six-channel PWM of HiChip HC16xx SoCs (GB350 backlight).

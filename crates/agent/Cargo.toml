@@ -1,0 +1,18 @@
+[package]
+name = "gb350-agent"
+description = "On-device agent: screen console + USB control channel for the GB350"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "agent"
+path = "src/main.rs"
+
+[dependencies]
+gb350-proto = { path = "../proto" }
+gb350-kms = { path = "../kms" }
+gb350-pcm = { path = "../pcm" }
+gb350-ui = { path = "../ui" }
+libc = "0.2"
+miniz_oxide = "0.8"

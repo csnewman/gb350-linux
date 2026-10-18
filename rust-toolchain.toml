@@ -1,0 +1,6 @@
+# The device targets (mipsel-unknown-linux-musl, mipsel-unknown-none) are
+# tier 3: nightly with build-std, which needs the standard library's source.
+[toolchain]
+channel = "nightly-2026-08-05"
+components = ["rust-src", "rustfmt", "clippy"]
+profile = "minimal"

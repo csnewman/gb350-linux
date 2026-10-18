@@ -1,0 +1,6 @@
+config GPIO_HC16XX
+	bool "HiChip HC16xx GPIO"
+	depends on GPIOLIB && OF && HAS_IOMEM
+	select GPIOLIB_IRQCHIP
+	help
+	  GPIO banks of the HiChip HC16xx SoCs (GB350).

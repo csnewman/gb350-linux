@@ -1,0 +1,18 @@
+[package]
+name = "gb350-retro"
+description = "Minimal libretro frontend for the GB350: KMS video, ALSA audio, evdev input"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "retro"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+miniz_oxide = "0.8"
+gb350-corelink = { path = "../corelink" }
+gb350-kms = { path = "../kms" }
+gb350-pcm = { path = "../pcm" }
+gb350-ui = { path = "../ui" }

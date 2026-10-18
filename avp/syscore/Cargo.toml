@@ -1,0 +1,25 @@
+[package]
+name = "gb350-syscore"
+description = "Firmware for the GB350's second core (MIPS 24KE): system services for Linux"
+version = "0.3.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# Bare-metal, separate from the Linux workspace (different target).
+[workspace]
+
+[[bin]]
+name = "syscore"
+path = "src/main.rs"
+test = false
+bench = false
+
+[profile.release]
+opt-level = "s"
+panic = "abort"
+lto = true
+codegen-units = 1
+debug = false
+
+[profile.dev]
+panic = "abort"

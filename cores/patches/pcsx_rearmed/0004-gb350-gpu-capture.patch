@@ -1,0 +1,141 @@
+gb350: capture of the GPU renderer's input (env gated)
+
+GB_GPU_CAPTURE=<file> GB_GPU_CAPTURE_AT=<vblank>,<count> records the VRAM,
+the E1-E6 registers, then every command list the renderer consumes, VRAM
+uploads and copies, and vblanks, for replaying the drawing elsewhere (the
+GB350's second core, corelink). No effect without the variables.
+
+diff --git a/plugins/gpulib/gpu.c b/plugins/gpulib/gpu.c
+index f04e3a55..ad46d0e9 100644
+--- a/plugins/gpulib/gpu.c
++++ b/plugins/gpulib/gpu.c
+@@ -19,6 +19,74 @@
+ #include "../../frontend/plugin_lib.h"
+ #include "../../include/compiler_features.h"
+ 
++/*
++ * gb350: capture of the renderer's input, for replaying it elsewhere (the
++ * second core). GB_GPU_CAPTURE=<file> GB_GPU_CAPTURE_AT=<lace>,<count>:
++ * from that vblank on, `count` frames. Run with frameskip off. File (LE
++ * u32s): "GCAP", 1, the 1 MiB VRAM, ex_regs[8]; records: 1 CMD n words,
++ * 2 VRAM_WRITE x y l r6 + l pixels padded to words, 3 VRAM_COPY 4 words,
++ * 4 FRAME lace; 0xffffffff END.
++ */
++static FILE *cap_f;
++static int cap_state;		/* 0 unconfigured, 1 armed, 2 recording, 3 off */
++static uint32_t cap_lace, cap_start, cap_count;
++
++static void cap_u32(uint32_t v)
++{
++  fwrite(&v, 4, 1, cap_f);
++}
++
++static void cap_words(uint32_t tag, const uint32_t *w, uint32_t n)
++{
++  if (cap_state != 2 || !n)
++    return;
++  cap_u32(tag);
++  cap_u32(n);
++  fwrite(w, 4, n, cap_f);
++}
++
++static void cap_vram_write(int x, int y, const uint16_t *mem, int l, uint32_t r6)
++{
++  uint16_t pad = 0;
++  if (cap_state != 2)
++    return;
++  cap_u32(2); cap_u32(x); cap_u32(y); cap_u32(l); cap_u32(r6);
++  fwrite(mem, 2, l, cap_f);
++  if (l & 1)
++    fwrite(&pad, 2, 1, cap_f);
++}
++
++static void cap_frame(struct psx_gpu *gpu)
++{
++  if (cap_state == 0) {
++    const char *at = getenv("GB_GPU_CAPTURE_AT");
++    cap_state = 3;
++    if (getenv("GB_GPU_CAPTURE") && at && sscanf(at, "%u,%u", &cap_start, &cap_count) == 2)
++      cap_state = 1;
++  }
++  if (cap_state == 1 && cap_lace >= cap_start) {
++    cap_f = fopen(getenv("GB_GPU_CAPTURE"), "wb");
++    if (!cap_f) {
++      cap_state = 3;
++      return;
++    }
++    cap_u32(0x50414347); cap_u32(1);
++    fwrite(gpu->vram, 2, 1024 * 512, cap_f);
++    fwrite(gpu->ex_regs, 4, 8, cap_f);
++    cap_state = 2;
++    fprintf(stderr, "gpu capture: started at vblank %u\n", cap_lace);
++  } else if (cap_state == 2) {
++    cap_u32(4); cap_u32(cap_lace);
++    if (cap_lace >= cap_start + cap_count) {
++      cap_u32(0xffffffff);
++      fclose(cap_f);
++      cap_state = 3;
++      fprintf(stderr, "gpu capture: done at vblank %u\n", cap_lace);
++    }
++  }
++  cap_lace++;
++}
++
+ #ifndef ARRAY_SIZE
+ #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+ #endif
+@@ -535,6 +603,7 @@ static int do_vram_io(struct psx_gpu *gpu, uint32_t *data, int count, int is_rea
+       l = count;
+ 
+     do_vram_line(vram, x + o, y, sdata, l, is_read, r6);
++    if (!is_read) cap_vram_write(x + o, y, sdata, l, r6);
+ 
+     if (o + l < w)
+       o += l;
+@@ -550,12 +619,14 @@ static int do_vram_io(struct psx_gpu *gpu, uint32_t *data, int count, int is_rea
+   for (; h > 0 && count >= w; sdata += w, count -= w, y++, h--) {
+     y &= 511;
+     do_vram_line(vram, x, y, sdata, w, is_read, r6);
++    if (!is_read) cap_vram_write(x, y, sdata, w, r6);
+   }
+ 
+   if (h > 0) {
+     if (count > 0) {
+       y &= 511;
+       do_vram_line(vram, x, y, sdata, count, is_read, r6);
++      if (!is_read) cap_vram_write(x, y, sdata, count, r6);
+       o = count;
+       count = 0;
+     }
+@@ -873,8 +944,10 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+         break;
+       *cycles_sum += *cycles_last;
+       *cycles_last = 0;
+-      if (do_vram_copy_pre(gpu, data + pos, cycles_last))
++      if (do_vram_copy_pre(gpu, data + pos, cycles_last)) {
++        cap_words(3, data + pos, 4);
+         do_vram_copy(gpu->vram, gpu->ex_regs, data + pos);
++      }
+       pos += 4;
+       continue;
+     case 0x00:
+@@ -894,8 +967,10 @@ static noinline int do_cmd_buffer(struct psx_gpu *gpu, uint32_t *data, int count
+                cycles_sum, cycles_last, &cmd, &vram_dirty);
+     }
+     else {
++      int start = pos;
+       pos += renderer_do_cmd_list(data + pos, count - pos, gpu->ex_regs,
+                cycles_sum, cycles_last, &cmd);
++      cap_words(1, data + start, pos - start);
+       vram_dirty = 1;
+     }
+ 
+@@ -1119,6 +1194,8 @@ static void GPUupdateLace(void)
+   int delay_vout_update = 0;
+   int updated = 1;
+ 
++  cap_frame(&gpu);
++
+   if (gpu.frameskip.set) {
+     uint32_t flip_delay = *gpu.state.frame_count - gpu.frameskip.last_flip_frame;
+     if (gpu_async_enabled(&gpu))

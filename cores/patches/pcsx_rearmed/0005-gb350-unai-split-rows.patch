@@ -1,0 +1,138 @@
+gb350: unai can draw a subset of the VRAM rows (two cores sharing drawing)
+
+renderer_set_split(shift, skip): VRAM rows are stripes of 2^shift rows;
+stripe s is skipped when bit (s & 31) of skip is set. One core draws with
+one pattern, the other (the GB350's second core, corelink service 2) with
+its complement, into the same VRAM: every pixel always has the same owner,
+whichever buffer the game draws to. skip 0 (the default): every row, no
+change.
+
+diff --git a/plugins/gpu_unai/gpu_inner.h b/plugins/gpu_unai/gpu_inner.h
+index b69a54a0..877c0322 100644
+--- a/plugins/gpu_unai/gpu_inner.h
++++ b/plugins/gpu_unai/gpu_inner.h
+@@ -127,6 +127,10 @@ static le16_t* gpuPixelSpanFn(le16_t* pDst, uintptr_t data, ptrdiff_t incr, size
+ 	}
+ 
+ 	do {
++		// Lines step across rows: the row from the address (split drawing).
++		if (unlikely(gpu_unai.inn.split_skip) &&
++		    GPU_SPLIT_SKIP(gpu_unai.inn, ((pDst - gpu_unai.vram) >> 10)))
++			goto endpixel;
+ 		if (!CF_GOURAUD)
+ 		{   // NO GOURAUD
+ 			if (!CF_MASKCHECK && !CF_BLEND) {
+@@ -309,7 +313,8 @@ static noinline void gpuTileDriverFn(le16_t *pDst, u16 data, u32 count,
+ 	int y0 = inn.y0;
+ 
+ 	for (; y0 < y1; ++y0) {
+-		if (!(y0&li) && (y0&pi) != pif)
++		if (!(y0&li) && (y0&pi) != pif &&
++		    !GPU_SPLIT_SKIP(gpu_unai.inn, y0))
+ 			gpuTileSpanFn<CF>(pDst, data, count);
+ 		pDst += FRAME_WIDTH;
+ 	}
+@@ -406,6 +411,7 @@ static noinline void gpuSpriteDriverFn(le16_t *pPixel, u32 count, const u8 *pTxt
+ 	for (; y0 < y1; ++y0, pPixel += FRAME_WIDTH, ++v0)
+ 	{
+ 	  if (y0 & li) continue;
++	  if (GPU_SPLIT_SKIP(inn, y0)) continue;
+ 	  const u8 *pTxt = pTxt_base + ((v0 & v0_mask) * 2048);
+ 	  le16_t *pDst = pPixel;
+ 	  u32 u0 = u0_;
+diff --git a/plugins/gpu_unai/gpu_raster_image.h b/plugins/gpu_unai/gpu_raster_image.h
+index dfa619be..68b99485 100644
+--- a/plugins/gpu_unai/gpu_raster_image.h
++++ b/plugins/gpu_unai/gpu_raster_image.h
+@@ -189,9 +189,14 @@ void gpuClearImage(PtrUnion packet)
+ 		return;
+ #endif
+ 		{
++			s32 row = y0;	/* gb350: split drawing by rows */
+ 			y0 = (FRAME_WIDTH - w0)>>1;
+ 			w0>>=3;
+ 			do {
++				if (GPU_SPLIT_SKIP(gpu_unai.inn, row++)) {
++					pixel += (w0 << 2) + y0;
++					continue;
++				}
+ 				x0=w0;
+ 				do {
+ 					pixel[0] = rgb;
+diff --git a/plugins/gpu_unai/gpu_raster_polygon.h b/plugins/gpu_unai/gpu_raster_polygon.h
+index 988e721f..3224e301 100644
+--- a/plugins/gpu_unai/gpu_raster_polygon.h
++++ b/plugins/gpu_unai/gpu_raster_polygon.h
+@@ -365,6 +365,7 @@ void gpuDrawPolyF(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
+ 					x3 += dx3, x4 += dx4 )
+ 			{
+ 				if (ya&li) continue;
++				if (GPU_SPLIT_SKIP(gpu_unai.inn, ya)) continue;
+ 				if ((ya&pi)==pif) continue;
+ 
+ 				xa = FixedCeilToInt(x3);  xb = FixedCeilToInt(x4);
+@@ -674,6 +675,7 @@ void gpuDrawPolyFT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 					u3 += du3, v3 += dv3 )
+ 			{
+ 				if (ya&li) continue;
++				if (GPU_SPLIT_SKIP(gpu_unai.inn, ya)) continue;
+ 				if ((ya&pi)==pif) continue;
+ 
+ 				u32 u4, v4;
+@@ -1020,6 +1022,7 @@ void gpuDrawPolyG(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_quad
+ 					r3 += dr3, g3 += dg3, b3 += db3 )
+ 			{
+ 				if (ya&li) continue;
++				if (GPU_SPLIT_SKIP(gpu_unai.inn, ya)) continue;
+ 				if ((ya&pi)==pif) continue;
+ 
+ 				u32 r4, g4, b4;
+@@ -1417,6 +1420,7 @@ void gpuDrawPolyGT(const PtrUnion packet, const PP gpuPolySpanDriver, u32 is_qua
+ 					r3 += dr3, g3 += dg3, b3 += db3 )
+ 			{
+ 				if (ya&li) continue;
++				if (GPU_SPLIT_SKIP(gpu_unai.inn, ya)) continue;
+ 				if ((ya&pi)==pif) continue;
+ 
+ 				u32 u4, v4;
+diff --git a/plugins/gpu_unai/gpu_unai.h b/plugins/gpu_unai/gpu_unai.h
+index 2b5daee6..7dc23f7e 100644
+--- a/plugins/gpu_unai/gpu_unai.h
++++ b/plugins/gpu_unai/gpu_unai.h
+@@ -287,8 +287,17 @@ struct gpu_unai_inner_t {
+ 	                        //  device (320x240), will usually be set to 1
+ 	                        //  so odd lines are not rendered. (Unless future
+ 	                        //  full-screen scaling option is in use ..TODO)
++
++	// gb350: drawing split between two cores by rows. VRAM rows are
++	//  stripes of 2^split_shift rows; stripe s is skipped if bit (s & 31)
++	//  of split_skip is set (0: all rows drawn).
++	u32 split_skip;
++	u8 split_shift;
+ };
+ 
++#define GPU_SPLIT_SKIP(inn, y) \
++	(((inn).split_skip >> ((u32)(y) >> (inn).split_shift & 31)) & 1)
++
+ struct gpu_unai_t {
+ 	u32 GPU_GP1;
+ 	GPUPacket PacketBuffer;
+diff --git a/plugins/gpu_unai/gpulib_if.cpp b/plugins/gpu_unai/gpulib_if.cpp
+index 4b9b57e6..5981644b 100644
+--- a/plugins/gpu_unai/gpulib_if.cpp
++++ b/plugins/gpu_unai/gpulib_if.cpp
+@@ -109,6 +109,14 @@ void renderer_finish(void)
+ {
+ }
+ 
++// gb350: two cores sharing the drawing: skip the stripes of 2^shift rows
++// whose bit (stripe & 31) is set in skip (0 = draw all rows).
++extern "C" void renderer_set_split(int shift, unsigned skip)
++{
++  gpu_unai.inn.split_shift = shift;
++  gpu_unai.inn.split_skip = skip;
++}
++
+ void renderer_notify_screen_change(const struct psx_gpu_screen *screen)
+ {
+   gpu_unai.inn.ilace_mask = gpu_unai.config.ilace_force;

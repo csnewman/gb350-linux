@@ -1,0 +1,110 @@
+lightrec: cap the block scan (u16 nb_ops wrapped, empty code ran stale code)
+
+lightrec_get_mips_block_len() scanned until a jump with no limit. Memory with
+no jump for over 65535 words (empty RAM) wrapped the u16 nb_ops; the emitter
+then produced no code and the block's function pointed at a recycled chunk
+of the code buffer still holding another block's old code. Blocks now end
+after LIGHTREC_MAX_BLOCK_OPS (0x4000) words; such blocks end without a
+jump, so they are interpreted (BLOCK_NEVER_COMPILE) and the interpreter
+falls through to the next address at the end of the list.
+
+diff --git a/deps/lightrec/interpreter.c b/deps/lightrec/interpreter.c
+index dee385a1..b72789df 100644
+--- a/deps/lightrec/interpreter.c
++++ b/deps/lightrec/interpreter.c
+@@ -62,6 +62,11 @@ static inline u32 lightrec_int_op(struct interpreter *inter)
+ 
+ static inline u32 jump_skip(struct interpreter *inter)
+ {
++	/* A block cut at LIGHTREC_MAX_BLOCK_OPS ends without a jump: carry on
++	 * at the next address. */
++	if (unlikely(inter->offset + 1u >= inter->block->nb_ops))
++		return inter->block->pc + ((inter->offset + 1u) << 2);
++
+ 	inter->op = next_op(inter);
+ 	inter->offset++;
+ 
+diff --git a/deps/lightrec/lightrec.c b/deps/lightrec/lightrec.c
+index cf2a07c1..e037574f 100644
+--- a/deps/lightrec/lightrec.c
++++ b/deps/lightrec/lightrec.c
+@@ -1356,11 +1356,24 @@ void lightrec_free_opcode_list(struct lightrec_state *state, struct opcode *ops)
+ 		      list);
+ }
+ 
+-static unsigned int lightrec_get_mips_block_len(const u32 *src)
++/*
++ * Longest block scanned. Memory with no jump for this long (an empty or not
++ * yet loaded RAM region, e.g. right after a save state is loaded) used to be
++ * scanned without limit: nb_ops is a u16, so the count wrapped, the emitter
++ * produced no code and the block ran whatever stale code the allocator's
++ * recycled chunk held (SIGILL, "rw_generic: No block found in LUT").
++ * Capped blocks end without a jump: they are interpreted, and the
++ * interpreter falls through to the next address.
++ */
++#define LIGHTREC_MAX_BLOCK_OPS 0x4000
++
++static unsigned int lightrec_get_mips_block_len(const u32 *src, bool *capped)
+ {
+ 	unsigned int i;
+ 	union code c;
+ 
++	*capped = false;
++
+ 	for (i = 1; ; i++) {
+ 		c.opcode = LE32TOH(*src++);
+ 
+@@ -1372,16 +1385,23 @@ static unsigned int lightrec_get_mips_block_len(const u32 *src)
+ 
+ 		if (is_unconditional_jump(c))
+ 			return i + 1;
++
++		if (i >= LIGHTREC_MAX_BLOCK_OPS) {
++			*capped = true;
++			/* Keep a branch together with its delay slot. */
++			return has_delay_slot(c) ? i + 1 : i;
++		}
+ 	}
+ }
+ 
+ static struct opcode * lightrec_disassemble(struct lightrec_state *state,
+-					    const u32 *src, unsigned int *len)
++					    const u32 *src, unsigned int *len,
++					    bool *capped)
+ {
+ 	struct opcode_list *list;
+ 	unsigned int i, length;
+ 
+-	length = lightrec_get_mips_block_len(src);
++	length = lightrec_get_mips_block_len(src, capped);
+ 
+ 	list = lightrec_malloc(state, MEM_FOR_IR,
+ 			       sizeof(*list) + sizeof(struct opcode) * length);
+@@ -1411,7 +1431,7 @@ static struct block * lightrec_precompile_block(struct lightrec_state *state,
+ 	const struct lightrec_mem_map *map = lightrec_get_map(state, &host, kunseg(pc));
+ 	const u32 *code = (u32 *) host;
+ 	unsigned int length;
+-	bool fully_tagged;
++	bool fully_tagged, capped;
+ 	u8 block_flags = 0;
+ 
+ 	if (!map)
+@@ -1423,7 +1443,7 @@ static struct block * lightrec_precompile_block(struct lightrec_state *state,
+ 		return NULL;
+ 	}
+ 
+-	list = lightrec_disassemble(state, code, &length);
++	list = lightrec_disassemble(state, code, &length, &capped);
+ 	if (!list) {
+ 		lightrec_free(state, MEM_FOR_IR, sizeof(*block), block);
+ 		return NULL;
+@@ -1456,6 +1476,9 @@ static struct block * lightrec_precompile_block(struct lightrec_state *state,
+ 	fully_tagged = lightrec_block_is_fully_tagged(block);
+ 	if (fully_tagged)
+ 		block_flags |= BLOCK_FULLY_TAGGED;
++	/* No jump at the end: only the interpreter can run it. */
++	if (capped)
++		block_flags |= BLOCK_NEVER_COMPILE;
+ 
+ 	if (block_flags)
+ 		block_set_flags(block, block_flags);
