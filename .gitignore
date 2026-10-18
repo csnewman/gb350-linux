@@ -15,6 +15,7 @@
 !/crates/
 !/cores/
 !/scripts/
+!/screenshots/
 !/web/
 
 # Private parts of the public folders.
