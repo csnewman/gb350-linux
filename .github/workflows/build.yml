@@ -58,7 +58,24 @@ jobs:
       - name: Second-core firmware
         run: avp/syscore/build.sh
 
-      - name: Kernel, device tree, modules, agent
+      # The kernel image holds the agent (its initramfs), so the agent is
+      # built first and its hash is part of the kernel's cache key: the
+      # kernel is rebuilt only when kernel/, its build script or Docker
+      # image, or the agent changed.
+      - name: Agent
+        run: scripts/build-agent.sh
+
+      - id: agent
+        run: echo "sha=$(sha256sum target/mipsel-unknown-linux-musl/release/agent | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - id: kernel
+        uses: actions/cache@v4
+        with:
+          path: out/kernel
+          key: kernel-${{ runner.os }}-${{ hashFiles('kernel/**', 'scripts/build-kernel.sh') }}-${{ steps.agent.outputs.sha }}
+
+      - name: Kernel, device tree, modules
+        if: steps.kernel.outputs.cache-hit != 'true'
         run: scripts/build-kernel.sh
 
       - name: Launcher
